@@ -10,7 +10,8 @@
  "field_order": [
   "exemption_category",
   "max_amount",
-  "is_active"
+  "is_active",
+  "description"
  ],
  "fields": [
   {
@@ -28,17 +29,23 @@
    "fieldname": "max_amount",
    "fieldtype": "Currency",
    "in_list_view": 1,
-   "label": "Max Exemption Amount"
+   "label": "Max Exemption Amount",
+   "non_negative": 1
   },
   {
    "default": "1",
    "fieldname": "is_active",
    "fieldtype": "Check",
    "label": "Is Active"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
   }
  ],
  "links": [],
- "modified": "2024-03-27 13:09:42.420982",
+ "modified": "2026-08-06 13:01:43.187327",
  "modified_by": "Administrator",
  "module": "Payroll",
  "name": "Employee Tax Exemption Sub Category",

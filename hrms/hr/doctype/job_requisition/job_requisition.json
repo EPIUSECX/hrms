@@ -47,6 +47,7 @@
    "fieldtype": "Int",
    "in_list_view": 1,
    "label": "No of. Positions",
+   "non_negative": 1,
    "reqd": 1
   },
   {
@@ -54,6 +55,7 @@
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "Expected Compensation",
+   "non_negative": 1,
    "options": "Company:company:default_currency",
    "reqd": 1
   },
@@ -202,7 +204,7 @@
    "link_fieldname": "job_requisition"
   }
  ],
- "modified": "2024-03-27 13:09:58.178411",
+ "modified": "2026-08-06 13:01:43.187327",
  "modified_by": "Administrator",
  "module": "HR",
  "name": "Job Requisition",
@@ -220,8 +222,25 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "read": 1,
+   "role": "HR User"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "creation",
  "sort_order": "DESC",
  "states": [],

@@ -60,6 +60,7 @@ class ShiftAssignment(Document):
 	def on_cancel(self):
 		self.validate_employee_checkin()
 		self.validate_attendance()
+		self.db_set("status", "Inactive", update_modified=False)
 
 	def validate_employee_checkin(self):
 		checkins = frappe.get_all(
@@ -197,6 +198,25 @@ def get_events(start: str | date, end: str | date, filters: list | None = None):
 
 	assignments = get_shift_assignments(start, end, filters)
 	return get_shift_events(assignments)
+
+
+def mark_expired_shift_assignments_as_inactive():
+	yesterday = add_days(getdate(), -1)
+	shift_assignment = frappe.qb.DocType("Shift Assignment")
+
+	expired_assignments = (
+		frappe.qb.from_(shift_assignment)
+		.select(shift_assignment.name)
+		.where(
+			(shift_assignment.docstatus == 1)
+			& (shift_assignment.status == "Active")
+			& (shift_assignment.end_date.isnotnull())
+			& (shift_assignment.end_date < yesterday)
+		)
+	).run(pluck=True)
+
+	for assignment in expired_assignments:
+		frappe.db.set_value("Shift Assignment", assignment, "status", "Inactive")
 
 
 def get_shift_assignments(start: str, end: str, filters: str | list | None = None) -> list[dict]:

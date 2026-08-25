@@ -6,15 +6,16 @@ app_email = "contact@frappe.io"
 app_license = "GNU General Public License (v3)"
 source_link = "http://github.com/frappe/hrms"
 app_logo_url = "/assets/hrms/images/frappe-hr-logo.svg"
-app_home = "/desk/people"
+app_home = "/desk/hr-setup"
 
 add_to_apps_screen = [
 	{
 		"name": "hrms",
 		"logo": "/assets/hrms/images/frappe-hr-logo.svg",
 		"title": "Frappe HR",
-		"route": "/desk/people",
+		"route": app_home,
 		"has_permission": "hrms.hr.utils.check_app_permission",
+		"sequence_id": 2,
 	}
 ]
 
@@ -106,6 +107,12 @@ setup_wizard_complete = "hrms.subscription_utils.update_erpnext_access"
 
 before_uninstall = "hrms.uninstall.before_uninstall"
 # after_uninstall = "hrms.uninstall.after_uninstall"
+
+# Disable / Enable
+# ----------------
+
+before_disable = "hrms.setup.before_disable"
+after_enable = "hrms.setup.after_enable"
 
 # Integration Setup
 # ------------------
@@ -208,12 +215,33 @@ doc_events = {
 			"hrms.overrides.employee_master.update_approver_role",
 			"hrms.overrides.employee_master.publish_update",
 		],
-		"after_insert": "hrms.overrides.employee_master.update_job_applicant_and_offer",
+		"after_insert": [
+			"hrms.overrides.employee_master.update_job_applicant_and_offer",
+			"hrms.telemetry.on_milestone_insert",
+		],
 		"on_trash": "hrms.overrides.employee_master.update_employee_transfer",
 		"after_delete": "hrms.overrides.employee_master.publish_update",
 	},
 	"Project": {"validate": "hrms.controllers.employee_boarding_controller.update_employee_boarding_status"},
 	"Task": {"on_update": "hrms.controllers.employee_boarding_controller.update_task"},
+	# ---- Usage telemetry: recurring feature usage (see hrms/telemetry.py) ----
+	"Leave Application": {"on_submit": "hrms.telemetry.on_leave_application_submit"},
+	"Expense Claim": {"on_submit": "hrms.telemetry.on_expense_claim_submit"},
+	"Attendance Request": {"on_submit": "hrms.telemetry.on_attendance_request_submit"},
+	"Shift Request": {"on_submit": "hrms.telemetry.on_shift_request_submit"},
+	"Employee Checkin": {"after_insert": "hrms.telemetry.on_employee_checkin"},
+	"Payroll Entry": {"on_submit": "hrms.telemetry.on_payroll_entry_submit"},
+	"Job Offer": {"on_submit": "hrms.telemetry.on_job_offer_submit"},
+	"Appraisal": {"on_submit": "hrms.telemetry.on_appraisal_submit"},
+	"Interview": {"on_submit": "hrms.telemetry.on_interview_submit"},
+	# ---- Activation telemetry: post-install setup funnel (first-time milestones) ----
+	"Shift Type": {"after_insert": "hrms.telemetry.on_milestone_insert"},
+	"Leave Type": {"after_insert": "hrms.telemetry.on_milestone_insert"},
+	"Salary Structure": {"after_insert": "hrms.telemetry.on_milestone_insert"},
+	"Job Opening": {"after_insert": "hrms.telemetry.on_milestone_insert"},
+	"Appraisal Cycle": {"after_insert": "hrms.telemetry.on_milestone_insert"},
+	"Employee Onboarding": {"after_insert": "hrms.telemetry.on_milestone_insert"},
+	"Salary Slip": {"on_submit": "hrms.telemetry.on_milestone_submit"},
 }
 
 # Scheduled Tasks
@@ -236,7 +264,9 @@ scheduler_events = {
 		"hrms.controllers.employee_reminders.send_work_anniversary_reminders",
 		"hrms.hr.doctype.daily_work_summary_group.daily_work_summary_group.send_summary",
 		"hrms.hr.doctype.interview.interview.send_daily_feedback_reminder",
+		"hrms.hr.doctype.shift_assignment.shift_assignment.mark_expired_shift_assignments_as_inactive",
 		"hrms.hr.doctype.job_opening.job_opening.close_expired_job_openings",
+		"hrms.telemetry.capture_daily_attendance_pulse",
 	],
 	"daily_long": [
 		"hrms.hr.doctype.leave_ledger_entry.leave_ledger_entry.process_expired_allocation",
@@ -374,3 +404,5 @@ company_data_to_be_ignored = [
 ignore_translatable_strings_from = ["frappe", "erpnext"]
 employee_holiday_list = ["hrms.utils.holiday_list.get_holiday_list_for_employee"]
 export_python_type_annotations = True
+require_type_annotated_api_methods = True
+repost_allowed_doctypes = ["Expense Claim"]

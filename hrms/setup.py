@@ -1,12 +1,11 @@
 import os
+from collections import defaultdict
 
 import frappe
+from frappe import N_ as _
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
-from frappe.desk.page.setup_wizard.install_fixtures import (
-	_,  # NOTE: this is not the real translation function
-)
 from frappe.desk.page.setup_wizard.setup_wizard import make_records
-from frappe.installer import update_site_config
+from frappe.permissions import add_permission, update_permission_property
 
 from hrms.overrides.company import delete_company_fixtures
 
@@ -19,14 +18,72 @@ def after_install():
 	update_hr_defaults()
 	add_non_standard_user_types()
 	set_single_defaults()
+	setup_repost_defaults()
 	create_default_role_profiles()
 	run_post_install_patches()
+	add_default_hr_permissions()
 
 
 def before_uninstall():
 	delete_custom_fields(get_custom_fields())
 	delete_custom_fields(get_salary_slip_loan_fields())
 	delete_company_fixtures()
+
+
+def before_disable():
+	"""Hide the customizations of this app. The site calls this while the app is still active."""
+	from frappe.custom import hide_customizations
+
+	hide_customizations(get_customizations())
+
+
+def after_enable():
+	"""Show the customizations of this app again. The site calls this after the app is active."""
+	from frappe.custom import unhide_customizations
+
+	unhide_customizations(get_customizations())
+
+
+def get_regional_custom_fields():
+	"""Return the custom fields that the country of each company adds.
+
+	A country with no regional module, or with no function for these fields, adds nothing.
+	"""
+	sources = []
+	for country in frappe.get_all("Company", pluck="country", distinct=True):
+		try:
+			getter = frappe.get_attr(f"hrms.regional.{frappe.scrub(country)}.setup.get_custom_fields")
+		except (ImportError, AttributeError):
+			continue
+		sources.append(getter())
+
+	return sources
+
+
+def get_customizations():
+	field_sources = [get_custom_fields(), *get_regional_custom_fields()]
+	if "lending" in frappe.get_installed_apps():
+		field_sources.append(get_salary_slip_loan_fields())
+
+	fieldnames = defaultdict(list)
+	for custom_fields in field_sources:
+		for doctype, fields in custom_fields.items():
+			fieldnames[doctype].extend(field["fieldname"] for field in fields)
+
+	return {
+		"Custom Field": [
+			{"dt": doctype, "fieldname": ("in", fields)} for doctype, fields in fieldnames.items()
+		],
+		"Property Setter": [
+			{"doc_type": "Salary Slip", "field_name": "rounded_total", "property": "hidden"},
+			{"doc_type": "Salary Slip", "field_name": "rounded_total", "property": "print_hide"},
+		],
+		"Custom DocPerm": [
+			{"parent": doctype, "role": role}
+			for role, permissions in HR_ROLE_PERMISSIONS.items()
+			for doctype in permissions
+		],
+	}
 
 
 def after_app_install(app_name):
@@ -186,6 +243,7 @@ def get_custom_fields():
 				"label": _("Employment Type"),
 				"options": "Employment Type",
 				"insert_after": "department",
+				"in_list_view": 1,
 			},
 			{
 				"fieldname": "job_applicant",
@@ -241,6 +299,7 @@ def get_custom_fields():
 				"label": _("Expense Approver"),
 				"options": "User",
 				"insert_after": "approvers_section",
+				"ignore_user_permissions": 1,
 			},
 			{
 				"fieldname": "leave_approver",
@@ -248,6 +307,7 @@ def get_custom_fields():
 				"label": _("Leave Approver"),
 				"options": "User",
 				"insert_after": "expense_approver",
+				"ignore_user_permissions": 1,
 			},
 			{
 				"fieldname": "column_break_45",
@@ -260,6 +320,7 @@ def get_custom_fields():
 				"label": _("Shift Request Approver"),
 				"options": "User",
 				"insert_after": "column_break_45",
+				"ignore_user_permissions": 1,
 			},
 			{
 				"fieldname": "employee_advance_account",
@@ -609,22 +670,10 @@ def remove_lending_docperms_from_ess():
 # ESS USER TYPE SETUP & CLEANUP
 def add_non_standard_user_types():
 	user_types = get_user_types_data()
-	update_user_type_doctype_limit(user_types)
 
 	for user_type, data in user_types.items():
 		create_custom_role(data)
 		create_user_type(user_type, data)
-
-
-def update_user_type_doctype_limit(user_types=None):
-	if not user_types:
-		user_types = get_user_types_data()
-
-	user_type_limit = {}
-	for user_type, __ in user_types.items():
-		user_type_limit.setdefault(frappe.scrub(user_type), 40)
-
-	update_site_config("user_type_doctype_limit", user_type_limit)
 
 
 def get_user_types_data():
@@ -859,3 +908,43 @@ def get_salary_slip_loan_fields():
 			},
 		],
 	}
+
+
+# Project and Task perms are needed for the Employee Onboarding / Separation flow, which
+# creates a Project and Tasks and assigns them to users. assign_to.add() does a read check
+# on Task, and on_cancel deletes the Project and its Tasks.
+_PROJECT_TASK_PERMS = {
+	"Project": {"read": 1, "write": 1, "create": 1, "delete": 1},
+	"Task": {"read": 1, "write": 1, "create": 1, "delete": 1},
+}
+
+# permissions this app grants on other apps' doctypes
+HR_ROLE_PERMISSIONS = {
+	"HR User": {
+		"Role": {"read": 1},
+		"Currency": {"read": 1},
+		**_PROJECT_TASK_PERMS,
+	},
+	"HR Manager": {
+		"Role": {"read": 1},
+		"Currency": {"read": 1},
+		"Email Account": {"read": 1},
+		**_PROJECT_TASK_PERMS,
+	},
+}
+
+
+def add_default_hr_permissions():
+	for role, permissions in HR_ROLE_PERMISSIONS.items():
+		for doctype, ptypes in permissions.items():
+			add_permission(doctype, role)
+
+			for ptype, value in ptypes.items():
+				update_permission_property(doctype, role, permlevel=0, ptype=ptype, value=value)
+
+
+def setup_repost_defaults():
+	accounts_settings = frappe.get_doc("Accounts Settings")
+	for x in frappe.get_hooks("repost_allowed_doctypes"):
+		accounts_settings.append("repost_allowed_types", {"document_type": x})
+	accounts_settings.save()
